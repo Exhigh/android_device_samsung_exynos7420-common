@@ -2,6 +2,7 @@
  * Copyright (C) 2016 The Android Open Source Project
  * Copyright (C) 2018 The LineageOS Project
  * Copyright (C) 2018 TeamNexus
+ * Copyright (C) 2020 Exhigh <exhigh01@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -200,6 +201,10 @@ private:
 	// profile currently in use. may be set by every power-method.
 	// Default to <INVALID>.
 	SecPowerProfiles mCurrentProfile;
+	
+	// profile to check if device slept. may be set by power-method.
+	// Default to <INVALID>.
+	SecPowerProfiles mUsedProfile;
 
 	// The device-variant this power-service is currently running on
 	// Default to <UNKNOWN>.
@@ -212,12 +217,21 @@ private:
 	
 	// Stores the current state of the touchkeys to prevent accidental
 	// enabling if user decidec to use on-screen-navbar and disabled them
-	// Default to <true>.
+	// Default to <false> as they will be enabled by default.
 	bool mTouchkeysEnabled;
 
 	// Stores the user-set doubletap2wake-state
 	// Default to <false>.
 	bool mIsDT2WEnabled;
+	
+	// Stores the doubletap2wake-state original state
+	// prior to being disabled temporarily.
+	// Default to <mIsDT2WEnabled> value.
+	bool mWasDT2WEnabled;
+	
+	// Stores the current state of the touchscreen
+	// Default to <false> as they will be enabled by default.
+	bool mCondition;
 
 	//
 	// Private methods
@@ -239,6 +253,8 @@ private:
 	void resetProfile(int delay = 0);
 
 	// updates the current state of managed input-devices.
+	// updated to check for pre-exisiting state and determines
+	// the required action.
 	void setInputState(bool enabled);
 
 	// updates the current state the fingerprint-sensor

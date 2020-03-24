@@ -216,6 +216,14 @@ bool Utils::screenIsOn() {
 	return (brightness > 0);
 }
 
+bool Utils::proxIsOff() {
+	int proximity = 0;
+	if (!Utils::read("/sys/class/input/input5/poll_delay", proximity)) {
+		return true;
+	}
+	return (proximity > 0);
+}
+
 /***********************************
  * Timing
  */

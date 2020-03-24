@@ -2,6 +2,7 @@
  * Copyright (C) 2016 The Android Open Source Project
  * Copyright (C) 2018 The LineageOS Project
  * Copyright (C) 2018 TeamNexus
+ * Copyright (C) 2020 Exhigh <exhigh01@gmail.com>
  *
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -47,10 +48,13 @@ Power::Power()
 	mIsInteractive = false;
 	mRequestedProfile = SecPowerProfiles::INVALID;
 	mCurrentProfile = SecPowerProfiles::INVALID;
+	mUsedProfile = SecPowerProfiles::INVALID;
 	mVariant = SecDeviceVariant::UNKNOWN;
 	mTouchControlPath = "";
-	mTouchkeysEnabled = true;
+	mTouchkeysEnabled = false;
+	mCondition = false;
 	mIsDT2WEnabled = false;
+	mWasDT2WEnabled = mIsDT2WEnabled;
 
 	//
 	// reading, asserting
@@ -109,7 +113,7 @@ Power::~Power() { }
 
 // Methods from ::android::hardware::power::V1_0::IPower follow.
 Return<void> Power::setInteractive(bool interactive) {
-	auto begin = Utils::getTime();
+	// auto begin = Utils::getTime();
 
 	ALOGV("%s: enter; interactive=%d", __func__, interactive ? 1 : 0);
 	power_lock();
@@ -117,34 +121,63 @@ Return<void> Power::setInteractive(bool interactive) {
 	this->mIsInteractive = interactive;
 
 	if (!interactive && Utils::screenIsOn()) {
-		ALOGW("%s: not disabling interactive state when screen is still on", __func__);
+		// ALOGW("%s: not disabling interactive state when screen is still on", __func__);
 		goto exit;
 	}
 
 	if (!interactive) {
-		setProfile(SecPowerProfiles::SCREEN_OFF);
+                if(!(Utils::proxIsOff())) {
+                   if(mWasDT2WEnabled) {
+                       mIsDT2WEnabled = false;
+                   }
+                }
+            setInputState(interactive);
+            //ALOGW("%s: enabling screen_off profile", __func__);
+	        setProfile(SecPowerProfiles::SCREEN_OFF);
+
 	} else {
-		// reset to requested- or fallback-profile
-		resetProfile(500);
+            // reset to requested- or fallback-profile
+            // ALOGW("%s: resetting power profile", __func__);
+                if(Utils::proxIsOff()) {
+                  if(mWasDT2WEnabled) {
+                       mIsDT2WEnabled = true;
+                   }
+                 }
+                resetProfile(275);
+                setInputState(interactive);
 	}
 
 	// speed up the device a bit
 	/* Utils::write("/sys/kernel/hmp/boostpulse_duration", 2500000); // 2.5s
 	Utils::write("/sys/kernel/hmp/boostpulse", true); */
 
-	setInputState(interactive);
+	
 
 exit:
-	auto end = Utils::getTime();
-	auto diff = end - begin;
+	// auto end = Utils::getTime();
+	// auto diff = end - begin;
 
-	ALOGV("%s: exit; took %lldms", __func__, diff.count());
+	// ALOGV("%s: exit; took %lldms", __func__, diff.count());
 	return Void();
 }
 
 Return<void> Power::powerHint(PowerHint hint, int32_t data)  {
 	// ALOGV("%s: enter; hint=%d, data=%d", __func__, hint, data);
 	power_lock();
+
+#ifdef POWER_HAS_LINEAGE_HINTS
+        if (mCurrentProfile == SecPowerProfiles::POWER_SAVE && hint != PowerHint::LOW_POWER &&
+        hint != static_cast<PowerHint>(LineagePowerHint::SET_PROFILE)) {
+        //ALOGW("PROFILE_POWER_SAVE active, ignoring hint");
+        return Void();
+        }
+#else
+        if (mCurrentProfile == SecPowerProfiles::POWER_SAVE && hint != PowerHint::LOW_POWER) {
+        //ALOGW("Profile Power_Save active, ignoring hint");
+        return Void();
+        }
+
+#endif
 
 	switch_uint32_t (hint)
 	{
@@ -166,7 +199,11 @@ Return<void> Power::powerHint(PowerHint hint, int32_t data)  {
 			if (data) {
 				setProfile(SecPowerProfiles::POWER_SAVE);
 			} else {
-				resetProfile();
+#ifdef POWER_HAS_LINEAGE_HINTS
+                resetProfile();
+#else
+                setProfile(SecPowerProfiles::BALANCED);
+#endif
 			}
 			break;
 		}
@@ -176,7 +213,11 @@ Return<void> Power::powerHint(PowerHint hint, int32_t data)  {
 			if (data) {
 				setProfile(SecPowerProfiles::HIGH_PERFORMANCE);
 			} else {
-				resetProfile();
+#ifdef POWER_HAS_LINEAGE_HINTS
+                resetProfile();
+#else
+                setProfile(SecPowerProfiles::BALANCED);
+#endif
 			}
 			break;
 		}
@@ -186,7 +227,11 @@ Return<void> Power::powerHint(PowerHint hint, int32_t data)  {
 			if (data) {
 				setProfile(SecPowerProfiles::HIGH_PERFORMANCE);
 			} else {
-				resetProfile();
+#ifdef POWER_HAS_LINEAGE_HINTS
+                resetProfile();
+#else
+                setProfile(SecPowerProfiles::BALANCED);
+#endif
 			}
 			break;
 		}
@@ -196,23 +241,25 @@ Return<void> Power::powerHint(PowerHint hint, int32_t data)  {
 		 */
 		case_uint32_t (PowerHint::INTERACTION):
 		{
-			// ALOGV("%s: PowerHint::INTERACTION(%d)", __func__, data);
+			ALOGV("%s: PowerHint::INTERACTION(%d)", __func__, data);
 			boostpulse(data);
 			break;
 		}
 		case_uint32_t (PowerHint::LAUNCH):
 		{
-			// ALOGV("%s: PowerHint::LAUNCH(%d)", __func__, data);
+			ALOGV("%s: PowerHint::LAUNCH(%d)", __func__, data);
+            boostpulse(data);
 			break;
 		}
 		case_uint32_t (PowerHint::VSYNC):
 		{
-			// ALOGV("%s: PowerHint::VSYNC(%d)", __func__, data);
-			break;
+			 ALOGV("%s: PowerHint::VSYNC(%d)", __func__, data);
+			 break;
 		}
 	}
 
-	// ALOGV("%s: exit;", __func__);
+
+	ALOGV("%s: exit;", __func__);
 	return Void();
 }
 
@@ -225,6 +272,7 @@ Return<void> Power::setFeature(Feature feature, bool activate)  {
 		case_uint32_t (Feature::POWER_FEATURE_DOUBLE_TAP_TO_WAKE):
 		{
 			mIsDT2WEnabled = activate;
+			mWasDT2WEnabled = mIsDT2WEnabled;
 			setDT2WState();
 			break;
 		}
@@ -309,10 +357,19 @@ void Power::boostpulse(int duration) {
 }
 
 void Power::setProfile(SecPowerProfiles profile) {
-	auto begin = Utils::getTime();
+	// auto begin = Utils::getTime();
  	ALOGI("%s: applying profile %d", __func__, profile);
 
+#ifndef POWER_HAS_LINEAGE_HINTS
+
 	// store it
+	mUsedProfile = profile;
+
+        if(mUsedProfile == SecPowerProfiles::SCREEN_OFF) {
+                mUsedProfile = mCurrentProfile;
+         }
+#endif
+    // store it
 	mCurrentProfile = profile;
 
 	// check if user disabled power-profiles
@@ -492,10 +549,10 @@ void Power::setProfile(SecPowerProfiles profile) {
 		PROFILE_WRITE("/sys/class/input_booster/head", input_booster, head);
 	}
 
-	auto end = Utils::getTime();
-	auto diff = end - begin;
+	// auto end = Utils::getTime();
+	// auto diff = end - begin;
 
-	ALOGV("%s: exit; took %lldms", __func__, diff.count());
+	// ALOGV("%s: exit; took %lldms", __func__, diff.count());
 }
 
 void Power::setProfile(SecPowerProfiles profile, int delay) {
@@ -503,55 +560,100 @@ void Power::setProfile(SecPowerProfiles profile, int delay) {
 }
 
 void Power::resetProfile(int delay) {
+
+#ifdef POWER_HAS_LINEAGE_HINTS
 	if (mRequestedProfile == SecPowerProfiles::INVALID) {
-		setProfile(SecPowerProfiles::BALANCED, delay);
+	            //ALOGW("%s: resetting power profile to balanced", __func__);
+                setProfile(SecPowerProfiles::BALANCED, delay);
 	} else {
-		setProfile(mRequestedProfile, delay);
+                //ALOGW("%s: resetting power profile to last used profile", __func__);
+                setProfile(mRequestedProfile, delay);
+        }
+
+#else
+        if (mCurrentProfile == SecPowerProfiles::INVALID) {
+		       //ALOGW("%s: resetting power profile to balanced", __func__);
+			   setProfile(SecPowerProfiles::BALANCED, delay);
+	} else {
+                if(mCurrentProfile == mUsedProfile) {
+                       //ALOGW("%s: resetting power profile to last used profile before sleep", __func__);
+                       setProfile(mCurrentProfile, delay);
+                 }
+                else {
+                       //ALOGW("%s: resetting power profile to last used profile after sleep", __func__);
+                       setProfile(mUsedProfile, delay);
+                 }
 	}
+#endif
+
 }
 
 void Power::setInputState(bool enabled) {
-	auto begin = Utils::getTime();
+	// auto begin = Utils::getTime();
  	ALOGI("%s: enter; enabled=%d", __func__, enabled ? 1 : 0);
 
-	if (enabled) {
-		if (!mTouchControlPath.empty()) {
-			DEBUG_TIMING(touchscreen, Utils::write(mTouchControlPath, true));
-		}
+	if (!enabled) {
 
-		if (mVariant != SecDeviceVariant::EDGE) {
-			ASYNC(DEBUG_TIMING(touchkeys_state, Utils::write(POWER_TOUCHKEYS_ENABLED, mTouchkeysEnabled)));
-			DEBUG_TIMING(touchkeys_brightness, Utils::write(POWER_TOUCHKEYS_BRIGHTNESS, 255));
-		}
-	} else {
-		if (mVariant != SecDeviceVariant::EDGE) {
-			// save to current state to prevent enabling
-			DEBUG_TIMING(touchkeys_state_read, Utils::read(POWER_TOUCHKEYS_ENABLED, mTouchkeysEnabled));
-
-			// disable them
-			DEBUG_TIMING(touchkeys_state, Utils::write(POWER_TOUCHKEYS_ENABLED, false));
-			DEBUG_TIMING(touchkeys_brightness, Utils::write(POWER_TOUCHKEYS_BRIGHTNESS, 0));
-		}
-
-		// only disable touchscreen if we aren't using DT2W
 		if (!mTouchControlPath.empty() && !mIsDT2WEnabled) {
-			DEBUG_TIMING(touchscreen, Utils::write(mTouchControlPath, false));
-		}
-	}
 
-	DEBUG_TIMING(dt2w, setDT2WState());
+                  if (mCondition) {
+                       ASYNC(Utils::write(mTouchControlPath, false));
+                       mCondition = false;
+                   }
+             } if (mVariant != SecDeviceVariant::EDGE) {
+#ifdef POWER_HAS_LINEAGE_HINTS
+                       ASYNC(Utils::read(POWER_TOUCHKEYS_ENABLED, mTouchkeysEnabled)));
+		       // disable them
+		       ASYNC(Utils::write(POWER_TOUCHKEYS_ENABLED, false));
+		       Utils::write(POWER_TOUCHKEYS_BRIGHTNESS, 0);
+#else
+                            if (mTouchkeysEnabled) {
+			             // disable them
+						 ASYNC(Utils::write(POWER_TOUCHKEYS_ENABLED, false));
+			             Utils::write(POWER_TOUCHKEYS_BRIGHTNESS, 0);
+						 mTouchkeysEnabled = false;
+#endif
+                       }
+               }
 
-	auto end = Utils::getTime();
-	auto diff = end - begin;
+      } else if (enabled) {
+		if (!mTouchControlPath.empty()) {
 
-	ALOGV("%s: exit; took %lldms", __func__, diff.count());
+                        if (!mCondition) {
+			        ASYNC(Utils::write(mTouchControlPath, true));
+			        mCondition = true;
+		        }
+              }
+
+		if (mVariant != SecDeviceVariant::EDGE) {
+#ifdef POWER_HAS_LINEAGE_HINTS
+                          ASYNC(Utils::write(POWER_TOUCHKEYS_ENABLED, mTouchkeysEnabled));
+						  Utils::write(POWER_TOUCHKEYS_BRIGHTNESS, 255);
+#else
+                        if (!mTouchkeysEnabled) {
+			         ASYNC(Utils::write(POWER_TOUCHKEYS_ENABLED, true));
+					 Utils::write(POWER_TOUCHKEYS_BRIGHTNESS, 255);
+					 mTouchkeysEnabled = true;
+#endif
+		        }
+                }
+             }
+
+       setDT2WState();
+
+	// auto end = Utils::getTime();
+	// auto diff = end - begin;
+
+	// ALOGV("%s: exit; took %lldms", __func__, diff.count());
 }
 
 void Power::setDT2WState() {
+
 	if (mIsDT2WEnabled) {
-		Utils::write(POWER_DT2W_ENABLED, true);
-	} else {
-		Utils::write(POWER_DT2W_ENABLED, false);
+              ASYNC(Utils::write(POWER_DT2W_ENABLED, true));
+
+ } else if (!mIsDT2WEnabled) {
+              ASYNC(Utils::write(POWER_DT2W_ENABLED, false));
 	}
 }
 
