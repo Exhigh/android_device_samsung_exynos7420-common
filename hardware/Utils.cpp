@@ -216,11 +216,47 @@ bool Utils::screenIsOn() {
 	return (brightness > 0);
 }
 
-bool Utils::proxIsOff() {
-	int proximity = 0;
-	if (!Utils::read("/sys/class/input/input5/poll_delay", proximity)) {
-		return true;
-	}
+void Utils::proxInit(int &proxim) {
+
+           string check = "proximity_sensor";
+           string check1;
+           string check2;
+           string check3;
+
+           Utils::read("/sys/class/input/input5/name", check1);
+           Utils::read("/sys/class/input/input6/name", check2);
+           Utils::read("/sys/class/input/input7/name", check3);
+
+            if ((check1.compare(check)) == 0) {
+               proxim = 1;
+            }
+            else if ((check2.compare(check)) == 0) {
+               proxim = 2;
+            }
+            else if ((check3.compare(check)) == 0) {
+               proxim = 3;
+            }
+}
+
+bool Utils::proxIsOff(int proxi) {
+          int proximity = 0;
+
+	  if (proxi == 1) {
+                  if (!Utils::read("/sys/class/input/input5/poll_delay", proximity)) {
+		       return true;
+	           }
+          }
+           else if (proxi == 2) {
+                  if (!Utils::read("/sys/class/input/input6/poll_delay", proximity)) {
+		       return true;
+	           }
+          }
+           else if (proxi == 3) {
+                  if (!Utils::read("/sys/class/input/input7/poll_delay", proximity)) {
+		       return true;
+	           }
+          }
+
 	return (proximity > 0);
 }
 

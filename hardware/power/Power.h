@@ -48,6 +48,9 @@ using std::ostringstream;
 #define POWER_TOUCHSCREEN_ENABLED_FLAT    "/sys/class/input/input1/enabled"
 #define POWER_TOUCHSCREEN_ENABLED_EDGE    "/sys/class/input/input0/enabled"
 
+#define IO_ONE                            "/sys/devices/system/cpu/cpu0/cpufreq/interactive/io_is_busy"
+#define IO_TWO                            "/sys/devices/system/cpu/cpu4/cpufreq/interactive/io_is_busy"
+
 #define __CPU_ONLINE(core, state) \
 { \
 	ostringstream cpu_state_path; \
@@ -230,8 +233,12 @@ private:
 	bool mWasDT2WEnabled;
 	
 	// Stores the current state of the touchscreen
-	// Default to <false> as they will be enabled by default.
+	// Default to <false> as it will be enabled by default.
 	bool mCondition;
+
+        // Stores The Input Path For the Proximity Sensor
+        // Default to 0 as it will be defined anyway.
+        int prox = 0;
 
 	//
 	// Private methods

@@ -193,7 +193,8 @@ struct Utils {
 	static bool read(const string path, int &data);
 
 	static bool screenIsOn();
-	static bool proxIsOff();
+	static bool proxIsOff(int proxi);
+	static void proxInit(int &proxim);
 
 	static std::chrono::milliseconds getTime();
 

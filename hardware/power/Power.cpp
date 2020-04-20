@@ -85,6 +85,9 @@ Power::Power()
 	mRequestedProfile = SecPowerProfiles::BALANCED;
 	setProfile(mRequestedProfile);
 
+        // initialize prox input path
+        Utils::proxInit(prox);
+
 	// enable all input-devices
 	setInputState(true);
 
@@ -126,32 +129,33 @@ Return<void> Power::setInteractive(bool interactive) {
 	}
 
 	if (!interactive) {
-                if(!(Utils::proxIsOff())) {
+                if(!(Utils::proxIsOff(prox))) {
                    if(mWasDT2WEnabled) {
                        mIsDT2WEnabled = false;
                    }
                 }
-            setInputState(interactive);
+            ASYNC(setInputState(interactive));
             //ALOGW("%s: enabling screen_off profile", __func__);
 	        setProfile(SecPowerProfiles::SCREEN_OFF);
 
 	} else {
             // reset to requested- or fallback-profile
             // ALOGW("%s: resetting power profile", __func__);
-                if(Utils::proxIsOff()) {
+                if(Utils::proxIsOff(prox)) {
                   if(mWasDT2WEnabled) {
                        mIsDT2WEnabled = true;
                    }
                  }
                 resetProfile(275);
-                setInputState(interactive);
+                ASYNC(setInputState(interactive));
 	}
 
 	// speed up the device a bit
 	/* Utils::write("/sys/kernel/hmp/boostpulse_duration", 2500000); // 2.5s
 	Utils::write("/sys/kernel/hmp/boostpulse", true); */
 
-	
+        ASYNC(Utils::write(IO_ONE, interactive));
+        ASYNC(Utils::write(IO_TWO, interactive));
 
 exit:
 	// auto end = Utils::getTime();
